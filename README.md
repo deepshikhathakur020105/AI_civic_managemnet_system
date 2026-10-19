@@ -1,0 +1,1 @@
+# AI_civic_managemnet_system
