@@ -18,3 +18,13 @@ The classifier is a stub until a trained model is placed at `backend/models/best
 
 ## Frontend
     cd frontend && npm install && npm run dev    # http://localhost:5173, proxies /api to :8000
+
+## Login and roles
+Public sign-up creates a `citizen` (can submit and see their own complaints). Officers and admins
+(can see all complaints and change status) are created by an administrator:
+
+    docker compose exec api python -m app.create_user officer@example.com officer
+
+Set `JWT_SECRET` (e.g. `export JWT_SECRET=$(openssl rand -hex 32)`) before `docker compose up`.
+If unset, a random key is generated at start and everyone is signed out on restart.
+Tokens expire after 60 minutes (`JWT_EXPIRE_MINUTES`).

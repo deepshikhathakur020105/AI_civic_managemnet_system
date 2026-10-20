@@ -14,6 +14,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://civic:civic@db:5432/civic
       UPLOAD_DIR: /data/uploads
+      JWT_SECRET: ${JWT_SECRET:-}
     ports: ["8000:8000"]
     depends_on: [db]
     volumes:

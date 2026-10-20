@@ -3,16 +3,17 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
+from . import db
+from .auth import current_user, require_role, router as auth_router
 from .ml.classifier import predict
 from .services.priority import compute_priority
 from .services.routing import route
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://civic:civic@localhost:5432/civic")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 ALLOWED_TYPES = {"image/jpeg", "image/png"}
 MAX_BYTES = 8 * 1024 * 1024
@@ -25,7 +26,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+app.include_router(auth_router)
 
 
 @app.get("/health")
@@ -39,6 +40,7 @@ async def create_complaint(
     lat: float = Form(..., ge=-90, le=90),
     lon: float = Form(..., ge=-180, le=180),
     description: str = Form(""),
+    user: dict = Depends(current_user),
 ):
     if image.content_type not in ALLOWED_TYPES:
         raise HTTPException(415, "Only JPEG or PNG images are accepted")
@@ -54,7 +56,7 @@ async def create_complaint(
     category, confidence, severity = predict(path)
     dept_name = route(category, confidence)
 
-    with engine.begin() as conn:
+    with db.engine.begin() as conn:
         dup = conn.execute(text("""
             SELECT id FROM complaints
             WHERE category = :cat AND parent_id IS NULL
@@ -68,17 +70,17 @@ async def create_complaint(
                                {"n": dept_name}).scalar()
         status = "needs_review" if dept_name == "Manual Review" else "open"
         new_id = conn.execute(text("""
-            INSERT INTO complaints (category, category_confidence, description, image_path,
+            INSERT INTO complaints (user_id, category, category_confidence, description, image_path,
                 geom, severity, priority, priority_score, status, department_id, parent_id, created_at)
-            VALUES (:cat,:conf,:desc,:img, ST_SetSRID(ST_MakePoint(:lon,:lat),4326)::geography,
+            VALUES (:uid,:cat,:conf,:desc,:img, ST_SetSRID(ST_MakePoint(:lon,:lat),4326)::geography,
                 :sev,:pri,:score,:status,:dept,:parent,:ts) RETURNING id"""),
-            {"cat": category, "conf": confidence, "desc": description, "img": path,
+            {"uid": user["id"], "cat": category, "conf": confidence, "desc": description, "img": path,
              "lon": lon, "lat": lat, "sev": severity, "pri": pr["level"], "score": pr["score"],
              "status": status, "dept": dept_id, "parent": dup,
              "ts": datetime.now(timezone.utc)}).scalar()
         conn.execute(text("""INSERT INTO complaint_events (complaint_id, actor, action, detail)
-            VALUES (:c,'system','created', CAST(:d AS jsonb))"""),
-            {"c": new_id, "d": json.dumps({"priority_factors": pr["factors"]})})
+            VALUES (:c,:actor,'created', CAST(:d AS jsonb))"""),
+            {"c": new_id, "actor": f"user:{user['id']}", "d": json.dumps({"priority_factors": pr["factors"]})})
 
     return {"id": new_id, "category": category, "confidence": confidence,
             "department": dept_name, "priority": pr["level"],
@@ -86,14 +88,16 @@ async def create_complaint(
 
 
 @app.get("/complaints")
-def list_complaints(status: str | None = None, limit: int = 100):
+def list_complaints(status: str | None = None, limit: int = 100,
+                    user: dict = Depends(current_user)):
     q = """SELECT c.id, c.category, c.priority, c.status, c.parent_id, d.name AS department,
                   ST_Y(c.geom::geometry) AS lat, ST_X(c.geom::geometry) AS lon, c.created_at
            FROM complaints c LEFT JOIN departments d ON d.id = c.department_id
            WHERE (:s IS NULL OR c.status = :s)
+             AND (:all OR c.user_id = :uid)
            ORDER BY c.priority, c.created_at DESC LIMIT :l"""
-    with engine.connect() as conn:
-        rows = conn.execute(text(q), {"s": status, "l": min(limit, 500)}).mappings().all()
+    with db.engine.connect() as conn:
+        rows = conn.execute(text(q), {"s": status, "l": min(limit, 500), "all": user["role"] in ("officer", "admin"), "uid": user["id"]}).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -105,16 +109,17 @@ VALID_STATUSES = {"open", "in_progress", "resolved", "needs_review"}
 
 
 @app.patch("/complaints/{complaint_id}/status")
-def update_status(complaint_id: int, body: StatusUpdate):
+def update_status(complaint_id: int, body: StatusUpdate,
+                  user: dict = Depends(require_role("officer", "admin"))):
     if body.status not in VALID_STATUSES:
         raise HTTPException(422, f"status must be one of {sorted(VALID_STATUSES)}")
-    with engine.begin() as conn:
+    with db.engine.begin() as conn:
         updated = conn.execute(
             text("UPDATE complaints SET status = :s WHERE id = :i RETURNING id"),
             {"s": body.status, "i": complaint_id}).scalar()
         if updated is None:
             raise HTTPException(404, "Complaint not found")
         conn.execute(text("""INSERT INTO complaint_events (complaint_id, actor, action, detail)
-            VALUES (:c,'officer','status_changed', CAST(:d AS jsonb))"""),
-            {"c": complaint_id, "d": json.dumps({"status": body.status})})
+            VALUES (:c,:actor,'status_changed', CAST(:d AS jsonb))"""),
+            {"c": complaint_id, "actor": f"user:{user['id']}", "d": json.dumps({"status": body.status})})
     return {"id": complaint_id, "status": body.status}

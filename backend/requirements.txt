@@ -3,6 +3,9 @@ uvicorn[standard]
 python-multipart
 sqlalchemy
 psycopg2-binary
+pyjwt
+bcrypt
 pytest
+httpx
 # ML (install when training/serving the model):
 # ultralytics
