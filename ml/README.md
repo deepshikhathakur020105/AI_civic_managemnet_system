@@ -1,5 +1,7 @@
 # ML pipeline (Tier 1: image classification)
 
+Colab: open `civic_train_colab.ipynb` in Google Colab (File > Upload notebook) and run it top to bottom.
+
 Why classification first: public datasets for these civic issues are a mix of folder-per-class
 images and YOLO box annotations. Reducing everything to one label per image lets you merge them
 and train one model. Bounding-box detection (needed for size-based severity) is Tier 2.
