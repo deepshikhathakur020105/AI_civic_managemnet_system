@@ -1,0 +1,39 @@
+# Copy to datasets.yaml and edit. Paths are where YOU unzipped each download.
+classes: [pothole, garbage, water_leakage, broken_streetlight, other]
+
+sources:
+  # A folder-per-class image dataset
+  - name: garbage_kaggle
+    type: folders
+    path: data/raw/garbage
+    map:                       # folder name inside `path` -> unified class
+      garbage: garbage
+
+  # A YOLO-format detection dataset (has images/ and labels/ folders)
+  - name: pothole_kaggle
+    type: yolo
+    path: data/raw/pothole
+    names: [pothole]           # class names from that dataset's data.yaml, in id order
+    map:
+      pothole: pothole
+
+  - name: leak_roboflow
+    type: yolo
+    path: data/raw/pipe_leak
+    names: [leak]
+    map:
+      leak: water_leakage
+
+  - name: streetlight
+    type: folders
+    path: data/raw/streetlight
+    map:
+      broken: broken_streetlight
+
+  # "other" = ordinary scenes with NO civic problem (clean road, intact lamp, empty street).
+  # Without it the model must force every photo into a civic class.
+  - name: negatives
+    type: folders
+    path: data/raw/other
+    map:
+      clean: other

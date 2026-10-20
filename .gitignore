@@ -6,3 +6,8 @@ uploads/
 backend/models/*.pt
 .env
 dist/
+ml/data/
+ml/runs/
+ml/reports/
+ml/datasets.yaml
+*.pt
