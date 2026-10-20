@@ -1,0 +1,23 @@
+services:
+  db:
+    build: ./db
+    environment:
+      POSTGRES_USER: civic
+      POSTGRES_PASSWORD: civic
+      POSTGRES_DB: civic
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://civic:civic@db:5432/civic
+      UPLOAD_DIR: /data/uploads
+    ports: ["8000:8000"]
+    depends_on: [db]
+    volumes:
+      - uploads:/data/uploads
+volumes:
+  pgdata:
+  uploads:
