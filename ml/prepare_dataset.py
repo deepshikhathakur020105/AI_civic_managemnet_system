@@ -114,6 +114,8 @@ def main():
         n_tr, n_va = int(len(items) * tr), int(len(items) * va)
         parts = {"train": items[:n_tr], "val": items[n_tr:n_tr + n_va], "test": items[n_tr + n_va:]}
         for split, subset in parts.items():
+            if not subset:
+                continue  # no empty class folders: they break training
             d = out / split / cls
             d.mkdir(parents=True, exist_ok=True)
             for path, name in subset:

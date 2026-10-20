@@ -4,6 +4,15 @@ Why classification first: public datasets for these civic issues are a mix of fo
 images and YOLO box annotations. Reducing everything to one label per image lets you merge them
 and train one model. Bounding-box detection (needed for size-based severity) is Tier 2.
 
+## Fastest route: Colab notebook
+Open `ml/train_colab.ipynb` in Google Colab (set runtime to T4 GPU). It downloads datasets with
+`kagglehub`, checks each one actually contains images, maps folders to your classes, trains,
+evaluates and lets you download `best.pt`.
+[Open in Colab](https://colab.research.google.com/github/deepshikhathakur020105/AI_civic_managemnet_system/blob/ml-dataset-yolo/ml/train_colab.ipynb)
+(works if the repo is public; otherwise upload the notebook file to Colab yourself).
+
+The manual steps below do the same thing from the command line.
+
 ## 1. Get the data (run on your laptop or Google Colab; the build workspace cannot reach Kaggle)
 Kaggle: create an API token (Account -> Create New Token), save as `~/.kaggle/kaggle.json`, then
 
