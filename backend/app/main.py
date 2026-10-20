@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sqlalchemy import create_engine, text
 
 from .ml.classifier import predict
@@ -17,6 +19,12 @@ MAX_BYTES = 8 * 1024 * 1024
 DUP_RADIUS_M = 50
 
 app = FastAPI(title="AI Assisted Civic Management")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 
@@ -87,3 +95,26 @@ def list_complaints(status: str | None = None, limit: int = 100):
     with engine.connect() as conn:
         rows = conn.execute(text(q), {"s": status, "l": min(limit, 500)}).mappings().all()
     return [dict(r) for r in rows]
+
+
+class StatusUpdate(BaseModel):
+    status: str
+
+
+VALID_STATUSES = {"open", "in_progress", "resolved", "needs_review"}
+
+
+@app.patch("/complaints/{complaint_id}/status")
+def update_status(complaint_id: int, body: StatusUpdate):
+    if body.status not in VALID_STATUSES:
+        raise HTTPException(422, f"status must be one of {sorted(VALID_STATUSES)}")
+    with engine.begin() as conn:
+        updated = conn.execute(
+            text("UPDATE complaints SET status = :s WHERE id = :i RETURNING id"),
+            {"s": body.status, "i": complaint_id}).scalar()
+        if updated is None:
+            raise HTTPException(404, "Complaint not found")
+        conn.execute(text("""INSERT INTO complaint_events (complaint_id, actor, action, detail)
+            VALUES (:c,'officer','status_changed', CAST(:d AS jsonb))"""),
+            {"c": complaint_id, "d": json.dumps({"status": body.status})})
+    return {"id": complaint_id, "status": body.status}

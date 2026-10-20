@@ -15,3 +15,6 @@ department. Officers review everything on a dashboard.
 
 The classifier is a stub until a trained model is placed at `backend/models/best.pt`
 (until then every complaint goes to the Manual Review queue).
+
+## Frontend
+    cd frontend && npm install && npm run dev    # http://localhost:5173, proxies /api to :8000
